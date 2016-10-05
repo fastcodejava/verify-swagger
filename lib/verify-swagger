@@ -1,4 +1,9 @@
-​/**
+/**
+ * Created by gdev on 10/4/2016.
+ */
+
+/**
+
  * Created by gdev on 7/23/2015.
  */
 var parser = require("swagger-parser");
@@ -6,6 +11,16 @@ var debug = require('debug')("swagger-parser");
 var error = require('debug')("swagger-error");
 var fs = require('fs');
 var _ = require('lodash');
+
+var verifySwagger = {};
+
+try {
+    verifySwagger = require("./verify-swagger-config.json");
+} catch (err) {
+
+}
+
+var noSecurity = verifySwagger['no-security'];
 
 var swaggerError = false;
 var swaggerFile = 'api/swagger/swagger.yaml';
@@ -47,22 +62,22 @@ parser.parse(swaggerFile, function(err, api, metadata) {
         if (so.get) {
             methods.push("GET");
             operation = so.get;
-            checkOperation(operation, controller, scr, p);
+            checkOperation(operation, controller, scr, p, "GET");
         }
         if (so.post) {
             methods.push("POST");
             operation = so.post;
-            checkOperation(operation, controller, scr, p);
+            checkOperation(operation, controller, scr, p, "POST");
         }
         if (so.put) {
             methods.push("PUT");
             operation = so.put;
-            checkOperation(operation, controller, scr, p);
+            checkOperation(operation, controller, scr, p, "PUT");
         }
         if (so.delete) {
             methods.push("DELETE");
             operation = so.delete;
-            checkOperation(operation, controller, scr, p);
+            checkOperation(operation, controller, scr, p, "DELETE");
         }
 
         if (!operation) {
@@ -122,15 +137,30 @@ parser.parse(swaggerFile, function(err, api, metadata) {
  *
  * @param operation
  */
-function checkOperation(operation, controller, scr, p) {
+function checkOperation(operation, controller, scr, p, method) {
+    var path = p + '[' + method + ']';
     if (!operation.operationId) {
         swaggerError = true;
-        error('No operationId provided for x-swagger-router-controller (' + controller + ') for path ' + p);
+        error('No operationId provided for x-swagger-router-controller (' + controller + ') for path ' + path);
     }
-​​
+
+    if (noSecurity === true && operation.security) {
+        error('Security was provided but not needed for path ' + path);
+    } else if (noSecurity && noSecurity.length > 0) {
+        if (Array.isArray(noSecurity) && noSecurity.indexOf(p) > -1 || _.isString(noSecurity) && noSecurity === p) {
+            if (operation.security) {
+                error('Security was provided but not needed for path ' + path);
+            }
+        } else {
+            checkSecurity(operation, controller, scr, p, method);
+        }
+    } else {
+        checkSecurity(operation, controller, scr, p, method);
+    }
+
     if (!_.get(scr, operation.operationId)) {
         swaggerError = true;
-        error('Unknown operationId (' + operation.operationId + ') for swagger-router-controller (' + controller + ') for path ' + p);
+        error('Unknown operationId (' + operation.operationId + ') for swagger-router-controller (' + controller + ') for path ' + path);
     }
     var parameters = operation.parameters;
     var pComps = p.split("/");
@@ -150,9 +180,22 @@ function checkOperation(operation, controller, scr, p) {
             );
             if (!pathParamFound) {
                 swaggerError = true;
-                error('Path Parameter ' + pComp + ' Not Found for url ' + p);
+                error('Path Parameter ' + pComp + ' Not Found for url ' + path);
             }
         }
     });
 }
- 
+
+
+
+function checkSecurity(operation, controller, scr, p, method) {
+    var path = p + '[' + method + ']';
+    var security = verifySwagger.security;
+    if (security === true && !operation.security) {
+        error('Security was not provided but needed for path ' + path);
+    } if (Array.isArray(security) && security.indexOf(p) > -1 || _.isString(security) && security === p) {
+        if (!operation.security) {
+            error('Security was not provided but needed for path ' + path);
+        }
+    }
+}
