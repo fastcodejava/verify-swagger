@@ -1,0 +1,10 @@
+{
+  "security": true,
+  "no-security": ["/user"],
+  "parameters": {
+    "in": "header",
+    "names": [
+      "SessionId",
+    ]
+  }
+}
