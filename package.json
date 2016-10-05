@@ -1,0 +1,23 @@
+{
+    "name": "verify-swagger",
+    "version": "0.0.1",
+    "description": "verify-swagger",
+    "main": "./index.js",
+    "directories": {
+        "lib": "lib"
+    },
+    "scripts": {
+        "test": "grunt mocha",
+        "verify": "grunt"
+    },
+    "author": "Gautam Dev <gdind2003@gmail.com>",
+    "license": "Apache-2.0",
+    "engines": {
+        "node": ">= 0.10.0"
+    },
+    "dependencies": {
+        "swagger-parser": "3.4.1 i",
+        "debug": "2.2.0",
+        "lodash": "^4.15.0"
+    }
+}
