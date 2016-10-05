@@ -1,0 +1,158 @@
+​/**
+ * Created by gdev on 7/23/2015.
+ */
+var parser = require("swagger-parser");
+var debug = require('debug')("swagger-parser");
+var error = require('debug')("swagger-error");
+var fs = require('fs');
+var _ = require('lodash');
+
+var swaggerError = false;
+var swaggerFile = 'api/swagger/swagger.yaml';
+
+parser.parse(swaggerFile, function(err, api, metadata) {
+
+    if (err) { error(err); return; }
+
+    //debug("API name: %s, Version: %s", api.info.title, api.info.version);
+    var paths = _.keys(api.paths);
+    var cnt = 0;
+
+    _.each(paths, function(p) {
+        var so = _.get(api.paths, p);
+        var scr = null;
+        var controller = _.get(so, 'x-swagger-router-controller');
+        if (!controller) {
+            swaggerError = true;
+            error("No controller was provided for path " + p);
+        }
+        try {
+            scr = require('./api/controllers/' + controller + '.js');
+        } catch (err) {
+            swaggerError = true;
+            var stats = fs.statSync(swaggerFile);
+            if (stats.isFile()) {
+                error("controller file " + controller + " exists, but there are some error in it.");
+            }
+            error("error with controller " + controller + " : " + err.message);
+        }
+
+        if (!scr) {
+            swaggerError = true;
+            error('Unknown x-swagger-router-controller (' + controller + ') for path ' + p);
+        }
+
+        var methods = [];
+        var operation = null;
+        if (so.get) {
+            methods.push("GET");
+            operation = so.get;
+            checkOperation(operation, controller, scr, p);
+        }
+        if (so.post) {
+            methods.push("POST");
+            operation = so.post;
+            checkOperation(operation, controller, scr, p);
+        }
+        if (so.put) {
+            methods.push("PUT");
+            operation = so.put;
+            checkOperation(operation, controller, scr, p);
+        }
+        if (so.delete) {
+            methods.push("DELETE");
+            operation = so.delete;
+            checkOperation(operation, controller, scr, p);
+        }
+
+        if (!operation) {
+            swaggerError = true;
+            error('No methods[get, post, put, delete] provided for path ' + p);
+        }
+
+        var pa = p + " [" + methods.join(", ") + "]";
+        debug(pa);
+        var i = _.indexOf(paths, p);
+        //error(i + " " + cnt);
+        if (i >= 0 && i !== cnt) {
+            swaggerError = true;
+            error("Duplicate url " + p);
+        }
+
+        var pComps = p.split("/");
+
+        _.each(paths, function(p1) {
+            var pComps1 = p1.split("/");
+            if (p !== p1 && pComps.length === pComps1.length) {
+                var pathPattern = /\{(.*)\}/;
+                if (pComps[pComps.length - 1].match(pathPattern) || pComps1[pComps1.length - 1].match(pathPattern)) {
+                    var allMatches = true;
+                    for(var j = 0; j < pComps.length - 1; j++) {
+                        if (pComps[j] !== pComps1[j]) {
+                            allMatches = false;
+                        }
+                    }
+
+                    if (allMatches) {
+                        //error("Possible Duplicate url with path conflict " + p + " - " + p1 + " " + paths.indexOf(p) + " - " + paths.indexOf(p1));
+                        if ((pComps[pComps.length - 1].match(pathPattern) && (paths.indexOf(p) < paths.indexOf(p1))) ||
+                            (pComps1[pComps1.length - 1].match(pathPattern) && (paths.indexOf(p1) < paths.indexOf(p) )) ) {
+                            swaggerError = true;
+                            error("Duplicate url with path conflict " + p + " - " + p1);
+                        }
+                    }
+                }
+            }
+        });
+        cnt += 1;
+    });
+    var definitions = _.keys(api.definitions);
+
+    _.each(definitions, function(def) {
+
+    });
+    if (swaggerError) {
+        console.log('There are some errors with the swagger file ' + swaggerFile  + ', please run in debug mode to see the errors');
+    } else {
+        console.log('There are no errors with the swagger file ' + swaggerFile);
+    }
+});
+
+/**
+ *
+ * @param operation
+ */
+function checkOperation(operation, controller, scr, p) {
+    if (!operation.operationId) {
+        swaggerError = true;
+        error('No operationId provided for x-swagger-router-controller (' + controller + ') for path ' + p);
+    }
+​​
+    if (!_.get(scr, operation.operationId)) {
+        swaggerError = true;
+        error('Unknown operationId (' + operation.operationId + ') for swagger-router-controller (' + controller + ') for path ' + p);
+    }
+    var parameters = operation.parameters;
+    var pComps = p.split("/");
+    var pathPattern = /\{(.*)\}/;
+
+    var pathParamFound;
+
+    _.each(pComps, function(pComp) {
+        if (pComp.match(pathPattern)) {
+            pathParamFound = false;
+            _.each(parameters, function (param) {
+                    if (param.in === 'path' && param.name === pComp.substring(1, pComp.length  - 1)) {
+                        //debug(param.name);
+                        pathParamFound = true;
+                    }
+                }
+            );
+            if (!pathParamFound) {
+                swaggerError = true;
+                error('Path Parameter ' + pComp + ' Not Found for url ' + p);
+            }
+        }
+    });
+}
+ 
